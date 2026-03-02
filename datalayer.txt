@@ -1,0 +1,226 @@
+# Communication Domain - Data Layer Design
+
+**Purpose:** Direct messaging between collectors and makers.
+
+**Database:** `communication_db`
+
+**CDK Stack:** `communication-stack`
+
+---
+
+## Tables
+
+### `conversations`
+
+**Partition Key:** `conversationId` (String, UUID)
+**Sort Key:** None
+
+**Attributes:**
+* `id` (String, PK, UUID)
+* `collector_user_id` (String) - Reference to Identity domain
+* `maker_user_id` (String) - Reference to Identity domain
+* `product_id` (String, optional) - If conversation started from a product
+* `subject` (String, optional) - Conversation subject/title
+* `last_message_at` (String, ISO 8601) - Timestamp of last message
+* `last_message_preview` (String) - Preview of last message (first 100 chars)
+* `last_message_sender_id` (String) - Who sent last message
+* `collector_unread_count` (Number) - Unread messages for collector
+* `maker_unread_count` (Number) - Unread messages for maker
+* `created_at` (String, ISO 8601)
+* `updated_at` (String, ISO 8601)
+
+**GSI:**
+* `GSI1`: `collectorUserId` (PK), `lastMessageAt` (SK) - Collector's conversations
+  * **Use Case:** Collector's messages/inbox page
+* `GSI2`: `makerUserId` (PK), `lastMessageAt` (SK) - Maker's conversations
+  * **Use Case:** Maker's messages/inbox page
+
+**TTL:** None
+
+---
+
+### `messages`
+
+**Partition Key:** `conversationId` (String)
+**Sort Key:** `messageId` (String)
+
+**Attributes:**
+* `conversation_id` (String, PK)
+* `message_id` (String, SK, UUID)
+* `sender_id` (String) - User ID of sender
+* `sender_type` (String) - "collector" | "maker"
+* `content` (String) - Message text
+* `attachments` (List of Maps, optional)
+  * `type` (String) - "image" | "file"
+  * `url` (String) - S3 URL
+  * `filename` (String)
+  * `size` (Number) - File size in bytes
+* `read_at` (String, ISO 8601, optional) - When message was read
+* `created_at` (String, ISO 8601)
+
+**GSI:**
+* `GSI1`: `senderId` (PK), `createdAt` (SK) - Messages by sender
+  * **Use Case:** Analytics, user message history
+
+**TTL:** None
+
+---
+
+## Query Patterns
+
+### Get Collector's Conversations
+**Table:** `conversations`
+**Operation:** Query on GSI1
+**Key:** `collector_user_id`, sort by `last_message_at` DESC
+**Use Case:** Collector's inbox page
+
+### Get Maker's Conversations
+**Table:** `conversations`
+**Operation:** Query on GSI2
+**Key:** `maker_user_id`, sort by `last_message_at` DESC
+**Use Case:** Maker's inbox page
+
+### Get Conversation by ID
+**Table:** `conversations`
+**Operation:** GetItem
+**Key:** `id`
+**Use Case:** Conversation detail page
+
+### Get Messages in Conversation
+**Table:** `messages`
+**Operation:** Query
+**Key:** `conversation_id`, sort by `created_at` ASC
+**Use Case:** Conversation detail page, chat UI
+
+### Get Unread Count
+**Table:** `conversations`
+**Operation:** Query on GSI1/GSI2
+**Key:** `collector_user_id` or `maker_user_id`
+**Filter:** Sum `collector_unread_count` or `maker_unread_count`
+**Use Case:** Unread messages badge
+
+### Find or Create Conversation
+**Table:** `conversations`
+**Operation:** Query on GSI1 + GSI2, then GetItem or CreateItem
+**Key:** Check if conversation exists between collector and maker
+**Use Case:** Start conversation from product page
+
+---
+
+## Events Consumed
+
+This domain consumes events from other domains:
+
+* `UserRegistered` (from Identity/Auth Essentials)
+  * **Action:** Validate sender/recipient identities and enable messaging
+
+* `ProductPublished` (from Product Domain)
+  * **Action:** Allow conversations to start from product context
+
+* `OrderCreated` (from Order Domain)
+  * **Action:** Allow conversations to start from order context
+
+---
+
+## Events Published
+
+This domain publishes the following events to EventBridge:
+
+* `ConversationCreated`
+  * `conversation_id` (String)
+  * `collector_user_id` (String)
+  * `maker_user_id` (String)
+  * `product_id` (String, optional)
+  * `created_at` (String, ISO 8601)
+
+* `MessageSent`
+  * `conversation_id` (String)
+  * `message_id` (String)
+  * `sender_id` (String)
+  * `sender_type` (String)
+  * `recipient_id` (String) - Other party in conversation
+  * `created_at` (String, ISO 8601)
+
+* `MessageRead`
+  * `conversation_id` (String)
+  * `message_id` (String)
+  * `read_by` (String) - User who read message
+  * `read_at` (String, ISO 8601)
+
+---
+
+## Design Considerations
+
+1. **One Conversation Per Collector-Maker Pair:** Each collector-maker pair has one conversation. If conversation started from a product, `product_id` is stored.
+
+2. **Unread Counts:** Maintained in `conversations` table for fast unread badge display. Updated when messages sent/read.
+
+3. **Message Ordering:** Messages sorted by `created_at` ASC for chronological display.
+
+4. **Attachments:** Files stored in S3. URLs stored in `attachments` array. Support images and files.
+
+5. **Real-Time Updates:** Use WebSockets (API Gateway WebSocket API) or Server-Sent Events for real-time message delivery.
+
+6. **Read Receipts:** `read_at` timestamp tracks when message was read. Used for "read" indicators.
+
+7. **Message Preview:** `last_message_preview` in `conversations` shows first 100 chars of last message for inbox preview.
+
+---
+
+## Access Patterns
+
+### High Frequency
+* Get conversations (inbox page)
+* Get messages (chat page)
+* Send message (chat page)
+* Mark message as read (when user views message)
+
+### Medium Frequency
+* Create conversation (start chat from product)
+* Get unread count (header badge)
+
+### Low Frequency
+* Get messages by sender (analytics)
+
+---
+
+## Data Consistency
+
+* **Strong Consistency:** Message reads (for chat UI)
+* **Eventually Consistent:** Unread counts (updated asynchronously)
+
+---
+
+## Real-Time Communication
+
+### WebSocket API
+* **Service:** API Gateway WebSocket API
+* **Use Case:** Real-time message delivery
+* **Connection Management:** Store active connections in DynamoDB or ElastiCache
+
+### Alternative: Server-Sent Events (SSE)
+* **Service:** API Gateway HTTP API
+* **Use Case:** Real-time message delivery (one-way, server to client)
+
+---
+
+## Next Steps
+
+1. **Create CDK stack** with DynamoDB tables
+2. **Set up S3 bucket** for message attachments
+3. **Set up EventBridge rules** for published events
+4. **Set up API Gateway WebSocket API** for real-time messaging
+5. **Create Lambda functions** for:
+   * Conversation management
+   * Message sending
+   * Message reading
+   * Unread count updates
+   * WebSocket connection management
+6. **Build API Gateway** endpoints:
+   * `GET /conversations`
+   * `POST /conversations`
+   * `GET /conversations/{conversation_id}`
+   * `GET /conversations/{conversation_id}/messages`
+   * `POST /conversations/{conversation_id}/messages`
+   * `PUT /messages/{message_id}/read`
+   * `GET /conversations/unread/count`

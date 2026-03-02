@@ -1,0 +1,67 @@
+================================================================================
+COMMUNICATION DOMAIN - EVENT CATALOG
+================================================================================
+Domain: communication-domain
+Event Source: hand-made.communication-domain
+Last Updated: 2026-02-16
+
+================================================================================
+PRODUCED EVENTS
+================================================================================
+
+Event: message.sent.v1
+Status: 🔲 PLANNED
+--------------------------------------------------------------------------------
+Description:
+  Published when a message is sent between users.
+
+Trigger: TBD
+Republish Lambda: TBD
+Payload Schema: TBD
+Consumers: notification-domain
+
+--------------------------------------------------------------------------------
+
+Event: message.read.v1
+Status: 🔲 PLANNED
+--------------------------------------------------------------------------------
+Description:
+  Published when a message is marked as read.
+
+Trigger: TBD
+Republish Lambda: TBD
+Payload Schema: TBD
+Consumers: notification-domain (update unread count)
+
+================================================================================
+CONSUMED EVENTS
+================================================================================
+
+Event: order.created.v1
+Source: hand-made.order-domain
+Status: ✅ IMPLEMENTED & ACTIVE
+--------------------------------------------------------------------------------
+Handler Lambda: order-created-consumer-lambda
+Action: Create communication thread between buyer and seller
+Handler Location: lib/functions/lambda/event-consumer/order-created-consumer-lambda.ts
+SQS Queue: order-created-consumer-queue
+EventBridge Rule: Routes order.created.v1 → SQS queue
+
+Idempotency:
+  Key: orderId
+  TTL: 24 hours
+
+Communication Thread Creation:
+  - One thread per buyer-seller pair
+  - Subject: "Order #<orderId> - Initial Contact"
+  - Participants: Buyer + Seller for each maker
+
+Published Events:
+  - message.sent.v1 (system message, audit trail)
+
+Error Handling:
+  - DLQ: order-created-consumer-dlq
+  - Max Retries: 3
+  - Log Retention: ONE_WEEK
+
+================================================================================

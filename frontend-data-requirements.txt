@@ -1,0 +1,67 @@
+# Communication Domain - Frontend Data Requirements
+
+## Overview
+All data captured from frontend for direct messaging.
+
+**Domain:** Communication Domain
+**Purpose:** Direct messaging between collectors and makers
+**Last Updated:** 2026-01-31
+
+---
+
+## 1. CONVERSATIONS
+
+### 1.1 Start Conversation
+**Endpoint**: `POST /conversations`
+
+```typescript
+{
+  recipientUserId: string,              // Maker or collector
+  productId?: string,                   // If starting from product
+  initialMessage: string,
+}
+```
+
+### 1.2 Get Conversations
+**Endpoint**: `GET /conversations`
+
+---
+
+## 2. MESSAGES
+
+### 2.1 Send Message
+**Endpoint**: `POST /conversations/{conversationId}/messages`
+
+```typescript
+{
+  content: string,
+  attachments?: Array<{
+    type: 'image' | 'file',
+    url: string,
+    filename: string,
+  }>,
+}
+```
+
+**Events Emitted**: `MessageSent`
+
+### 2.2 Mark as Read
+**Endpoint**: `PUT /messages/{messageId}/read`
+
+### 2.3 Get Messages
+**Endpoint**: `GET /conversations/{conversationId}/messages`
+
+---
+
+## API Endpoints
+
+- `POST /conversations` - Start conversation
+- `GET /conversations` - List conversations
+- `GET /conversations/{id}` - Get conversation details
+- `POST /conversations/{id}/messages` - Send message
+- `GET /conversations/{id}/messages` - Get messages
+- `PUT /messages/{id}/read` - Mark message as read
+
+---
+
+**Note:** See `inter-domain-data-requirements.txt` for events.

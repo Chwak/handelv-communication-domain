@@ -1,0 +1,243 @@
+# Communication Domain - Business Logic
+
+## Domain Purpose
+The Communication Domain manages direct messaging between collectors and makers. This domain enables communication and relationship building.
+
+## Data Layer Ownership
+The Communication Domain owns and manages the following DynamoDB tables:
+- conversations: Conversation records between collectors and makers
+- messages: Individual messages within conversations
+
+## Business Rules
+
+### 1. Conversation Creation
+- Conversations are created when first message is sent
+- Conversations link collectors and makers
+- Conversations can be started from products (optional)
+- One conversation per collector-maker pair
+- Conversations track last message and unread counts
+
+### 2. Message Sending
+- Messages can be sent by collectors or makers
+- Messages have content (text)
+- Messages can include attachments (images, files)
+- Messages are delivered in real-time
+- Messages are stored permanently
+
+### 3. Message Delivery
+- Messages are delivered via WebSocket or polling
+- Delivery status is tracked
+- Read receipts are supported
+- Unread counts are maintained per user
+- Message delivery is asynchronous
+
+### 4. Conversation Management
+- Conversations show last message preview
+- Conversations are sorted by last_message_at
+- Unread counts are shown per conversation
+- Conversations can be archived (future feature)
+- Conversations cannot be deleted
+
+### 5. Message Attachments
+- Attachments are uploaded to S3
+- Attachment URLs are stored in message
+- Attachments include type, url, and filename
+- Attachments are validated before storage
+- Attachment size limits apply
+
+### 6. Read Receipts
+- Read status is tracked per message
+- Read_at timestamp is recorded
+- Read receipts are optional
+- Unread counts are calculated from read status
+- Read status is updated in real-time
+
+### 7. Message Moderation
+- Messages are scanned for inappropriate content
+- Spam detection is applied
+- Abusive messages can be reported
+- Moderation is automated and manual
+- Blocked users cannot send messages
+
+## Data Layer Interactions
+
+### Read Operations
+- Read conversations by collector_user_id
+- Read conversations by maker_user_id
+- Read messages by conversation_id
+- Read unread message counts
+- Read conversation by id
+
+### Write Operations
+- Create conversation
+- Send message
+- Mark message as read
+- Update conversation last_message
+- Update unread counts
+- Add message attachments
+
+### Data Integrity Rules
+- Conversations must reference valid collector_user_id and maker_user_id
+- Messages must reference valid conversation_id
+- Messages must reference valid sender_id
+- Sender must be collector or maker in conversation
+- Attachments must be valid S3 URLs
+- Read status must reference valid message
+
+## Event-Driven Communication
+
+### Events Published
+- ConversationCreated: When a conversation is started
+- MessageSent: When a message is sent
+- MessageRead: When a message is read
+- ConversationUpdated: When conversation metadata changes
+
+### Events Consumed
+- UserRegistered: From Identity Domain - validates user exists
+- ProductPublished: From Product Domain - enables conversation from product
+- OrderCreated: From Order Domain - may enable conversation
+
+## Cross-Domain Boundaries
+
+### What This Domain Owns
+- Conversations
+- Messages
+- Message attachments
+- Read receipts
+- Unread counts
+
+### What This Domain Does NOT Own
+- User profiles (Collector/Maker Domains)
+- Products (Product Domain)
+- Orders (Order Domain)
+- Notifications (Notification Domain)
+- User authentication (Identity Domain)
+
+## Business Logic Constraints
+1. One conversation per collector-maker pair
+2. Messages can only be sent by conversation participants
+3. Attachments must be validated before storage
+4. Read receipts are optional but tracked
+5. Unread counts must be accurate
+6. Messages cannot be deleted (only hidden)
+7. Conversations cannot be deleted
+8. Message delivery must be reliable
+
+## Domain Structure & Implementation
+
+### Directory Structure
+The Communication Domain follows a structure similar to `/Users/jred/AWS/aedcor-backend/support_backend/lib`:
+
+```
+lib/
+├── constructs/
+│   ├── dynamodb/
+│   │   └── communication-tables/
+│   │       └── communication-tables-construct.ts
+│   ├── s3/
+│   │   └── message-attachments-bucket/
+│   │       └── message-attachments-bucket-construct.ts
+│   ├── lambda/
+│   │   └── communication/
+│   │       ├── send-message/
+│   │       ├── get-conversation/
+│   │       ├── list-conversations/
+│   │       ├── get-messages/
+│   │       ├── mark-message-read/
+│   │       ├── upload-attachment/
+│   │       └── websocket-handler/
+│   └── appsync/
+│       └── communication-appsync/
+│           └── communication-appsync-construct.ts
+├── functions/
+│   ├── lambda/
+│   │   └── communication/
+│   │       ├── send-message/
+│   │       │   └── send-message-lambda.js
+│   │       ├── get-conversation/
+│   │       │   └── get-conversation-lambda.js
+│   │       ├── list-conversations/
+│   │       │   └── list-conversations-lambda.js
+│   │       ├── get-messages/
+│   │       │   └── get-messages-lambda.js
+│   │       ├── mark-message-read/
+│   │       │   └── mark-message-read-lambda.js
+│   │       ├── upload-attachment/
+│   │       │   └── upload-attachment-lambda.js
+│   │       └── websocket-handler/
+│   │           └── websocket-handler-lambda.js
+│   └── appsync-resolvers/
+│       └── communication/
+│           ├── send-message-resolver.js
+│           └── get-conversations-resolver.js
+└── utils/
+    ├── response-utils.ts
+    ├── validation-utils.ts
+    ├── moderation-utils.ts
+    └── event-publisher.ts
+```
+
+### Data Layer Interaction Patterns
+
+#### Direct Data Access
+- **Conversations**: Direct DynamoDB access via `conversations` table using `conversation_id` as partition key
+- **Messages**: Direct DynamoDB access via `messages` table using `conversation_id` (PK) and `message_id` (SK)
+
+#### Query Patterns
+- **Get conversation**: Single item read by `conversation_id`
+- **List conversations by collector**: GSI query by `collector_user_id`
+- **List conversations by maker**: GSI query by `maker_user_id`
+- **Get messages**: Query by `conversation_id` with pagination
+- **Get unread count**: Query with filter on `read_at` = null
+
+#### Write Patterns
+- **Create conversation**: PutItem with collector-maker pair validation (one per pair)
+- **Send message**: PutItem for message + UpdateItem for conversation last_message
+- **Mark message read**: UpdateItem with `read_at` timestamp
+- **Update unread count**: Atomic increment/decrement on conversation
+
+### Business Logic Implementation
+
+#### Conversation Management
+- One conversation per collector-maker pair enforced via composite key
+- Conversation created automatically on first message
+- Conversation metadata updated on each message (last_message, last_message_at)
+- Unread counts maintained per user per conversation
+
+#### Message Delivery
+- Real-time delivery via WebSocket or AppSync subscriptions
+- Message delivery status tracked
+- Failed deliveries retried with exponential backoff
+- WebSocket handler manages connection lifecycle
+
+#### Attachment Handling
+- Attachments uploaded to S3 before message creation
+- Attachment URLs stored in message record
+- Attachment validation (type, size) before storage
+- Attachment access controlled via signed URLs
+
+#### Moderation
+- Message content scanned for inappropriate content
+- Spam detection applied before message storage
+- Moderation handled asynchronously (message stored, flagged if needed)
+- Blocked users prevented from sending messages
+
+#### Event Handling
+- **Event Publisher**: Publishes domain events
+  - `ConversationCreated` → Published when first message sent
+  - `MessageSent` → Published for each message
+  - `MessageRead` → Published when message marked as read
+
+#### Data Consistency
+- Message creation uses DynamoDB transactions for conversation + message
+- Unread count updates are atomic
+- Read receipts updated with conditional writes for idempotency
+- Conversation last_message updated optimistically
+
+#### Error Handling
+- Invalid conversation participants → Return 400 Bad Request
+- Invalid attachment → Return 400 Bad Request
+- Message too long → Return 400 Bad Request
+- Conversation not found → Return 404 Not Found
+- Unauthorized access → Return 403 Forbidden
+- Delivery failure → Retry with exponential backoff

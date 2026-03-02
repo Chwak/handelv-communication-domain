@@ -1,0 +1,182 @@
+================================================================================
+COMMUNICATION DOMAIN - WORKFLOW DOCUMENTATION
+================================================================================
+
+1. WORKFLOW
+================================================================================
+
+The Communication Domain manages direct messaging between collectors and makers.
+
+Main Workflows:
+
+1. Conversation Management
+   - Create conversation (automatically on first message)
+   - Get conversation details
+   - List conversations for collector
+   - List conversations for maker
+   - One conversation per collector-maker pair
+
+2. Message Sending
+   - Send message in conversation
+   - Messages can include text content
+   - Messages can include attachments (images, files)
+   - Messages stored permanently
+
+3. Message Retrieval
+   - Get messages in a conversation
+   - Paginated message history
+   - Messages sorted by timestamp
+
+4. Read Receipts
+   - Mark message as read
+   - Track read_at timestamp
+   - Calculate unread counts per conversation
+
+5. Attachment Management
+   - Upload attachment to S3
+   - Get signed URL for attachment download
+   - Attachments linked to messages
+
+================================================================================
+2. OPERATIONS TYPE
+================================================================================
+
+Operation Types:
+- Conversation Operations: Get conversation, list conversations
+- Message Operations: Send message, get messages
+- Read Receipt Operations: Mark message as read
+- Attachment Operations: Upload attachment
+
+API Type: GraphQL API (AppSync)
+
+================================================================================
+3. OUTPUT OF EACH OPERATION (NO CODE, JUST DESCRIPTION)
+================================================================================
+
+3.1 Get Conversation Operation
+   Input: Conversation ID, user ID (for authorization)
+   Process:
+     - Retrieves conversation from conversations table
+     - Validates user is participant (collector or maker)
+     - Returns conversation with metadata
+   Output:
+     - Success: Conversation object with conversation_id, collector_user_id, maker_user_id, last_message, last_message_at, unread_counts, created_at
+     - Error: Conversation not found (404), unauthorized access (403)
+
+3.2 List Conversations Operation
+   Input: User ID (collector or maker), pagination parameters
+   Process:
+     - Queries conversations table by collector_user_id or maker_user_id (GSI)
+     - Returns paginated list of conversations
+     - Sorted by last_message_at (most recent first)
+   Output:
+     - Success: List of conversations with conversation_id, other_participant_id, last_message preview, unread_count, last_message_at, pagination info
+     - Error: Invalid pagination parameters
+
+3.3 Send Message Operation
+   Input: Conversation ID (or collector_user_id + maker_user_id for new conversation), sender_id, content, attachments (optional)
+   Process:
+     - If conversation doesn't exist, creates conversation
+     - Validates sender is participant in conversation
+     - Creates message record in messages table
+     - Updates conversation last_message and last_message_at
+     - Increments unread count for recipient
+     - If attachments provided, validates and stores attachment URLs
+   Output:
+     - Success: Message object with message_id, conversation_id, sender_id, content, attachments, created_at, read_at
+     - Error: Invalid conversation, unauthorized sender, message too long, invalid attachment
+
+3.4 Get Messages Operation
+   Input: Conversation ID, user ID (for authorization), pagination parameters
+   Process:
+     - Validates user is participant in conversation
+     - Queries messages table by conversation_id
+     - Returns paginated list of messages
+     - Messages sorted by created_at (oldest first or newest first)
+   Output:
+     - Success: List of messages with message_id, sender_id, content, attachments, created_at, read_at, pagination info
+     - Error: Conversation not found, unauthorized access, invalid pagination parameters
+
+3.5 Mark Message Read Operation
+   Input: Message ID, user ID (recipient)
+   Process:
+     - Validates message exists and user is recipient
+     - Updates message read_at timestamp
+     - Decrements unread count for conversation
+     - Updates conversation metadata
+   Output:
+     - Success: Updated message object with read_at timestamp
+     - Error: Message not found, unauthorized access, message already read
+
+3.6 Upload Attachment Operation
+   Input: User ID, file (image or document), file type, file size
+   Process:
+     - Validates file type and size
+     - Uploads file to S3 bucket
+     - Creates record in attachment metadata (if separate table)
+     - Returns signed URL for file access
+   Output:
+     - Success: Attachment object with attachment_id, file_url, file_type, file_name, file_size, signed_url (temporary)
+     - Error: Invalid file type, file too large, upload failure
+
+================================================================================
+4. GENERATED EVENTS - WHO, HOW TO BE COMMUNICATED WITH WHICH OTHER DOMAIN
+================================================================================
+
+Events Published:
+- ConversationCreated: Published when a conversation is started (first message)
+  - Who: Communication Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain
+  - Purpose: Notify participants that conversation started
+  - Event Data: conversation_id, collector_user_id, maker_user_id, created_at
+
+- MessageSent: Published when a message is sent
+  - Who: Communication Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain
+  - Purpose: Send real-time notification to recipient about new message
+  - Event Data: message_id, conversation_id, sender_id, recipient_id, content_preview, created_at
+
+- MessageRead: Published when a message is marked as read
+  - Who: Communication Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain (optional)
+  - Purpose: Update read receipt status, may trigger read receipt notifications
+  - Event Data: message_id, conversation_id, reader_id, read_at
+
+- ConversationUpdated: Published when conversation metadata changes
+  - Who: Communication Domain
+  - How: EventBridge event bus
+  - Communicated with: Notification Domain (optional)
+  - Purpose: Notify about conversation state changes
+  - Event Data: conversation_id, updated_fields, updated_at
+
+Events Consumed:
+- UserRegistered: From Identity Domain / Auth Essentials
+  - Purpose: Validate user exists before creating conversation
+  - Action: Validate collector_user_id and maker_user_id are valid users
+
+- ProductPublished: From Product Domain
+  - Purpose: Enable conversation creation from product page
+  - Action: Allow conversation creation with product context
+
+- OrderCreated: From Order Domain
+  - Purpose: Enable conversation creation related to order
+  - Action: Allow conversation creation with order context
+
+Cross-Domain Communication:
+- Notification Domain: Receives ConversationCreated, MessageSent, MessageRead events to send notifications to users
+- Identity Domain: Validates user existence (via events or direct validation)
+- Product Domain: Provides context for conversation creation from products
+- Order Domain: Provides context for conversation creation related to orders
+
+Communication Method:
+- EventBridge: Primary method for asynchronous event communication
+- AppSync GraphQL: Direct queries from frontend
+- S3: Storage for message attachments
+- SSM Parameters: No exports (read-only domain)
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

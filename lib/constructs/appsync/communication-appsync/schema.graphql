@@ -1,0 +1,76 @@
+type Query @aws_cognito_user_pools {
+  getConversation(conversationId: ID!): Conversation
+  listConversations(
+    userId: ID!
+    limit: Int
+    nextToken: String
+  ): ConversationsConnection
+  getMessages(
+    conversationId: ID!
+    limit: Int
+    nextToken: String
+  ): MessagesConnection
+  getUnreadCount(userId: ID!): Int
+}
+
+type Mutation @aws_cognito_user_pools {
+  sendMessage(input: SendMessageInput!): Message
+  markMessageRead(messageId: ID!): Message
+  markConversationRead(conversationId: ID!): Conversation
+}
+
+
+type Conversation {
+  conversationId: ID!
+  collectorUserId: ID!
+  makerUserId: ID!
+  shelfItemId: ID
+  lastMessage: Message
+  lastMessageAt: AWSDateTime
+  unreadCountCollector: Int!
+  unreadCountMaker: Int!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type ConversationsConnection {
+  items: [Conversation!]!
+  nextToken: String
+}
+
+type Message {
+  messageId: ID!
+  conversationId: ID!
+  senderId: ID!
+  content: String!
+  attachments: [MessageAttachment!]
+  readAt: AWSDateTime
+  createdAt: AWSDateTime!
+}
+
+type MessagesConnection {
+  items: [Message!]!
+  nextToken: String
+}
+
+type MessageAttachment {
+  attachmentId: ID!
+  type: String!
+  url: String!
+  filename: String!
+  size: Int
+}
+
+input SendMessageInput {
+  conversationId: ID!
+  senderId: ID!
+  content: String!
+  attachments: [MessageAttachmentInput!]
+}
+
+input MessageAttachmentInput {
+  type: String!
+  url: String!
+  filename: String!
+  size: Int
+}

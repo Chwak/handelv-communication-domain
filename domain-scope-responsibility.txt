@@ -1,0 +1,206 @@
+================================================================================
+COMMUNICATION DOMAIN - SCOPE & RESPONSIBILITY
+================================================================================
+
+DOMAIN PURPOSE
+================================================================================
+
+The Communication Domain manages direct messaging between collectors and makers. This domain enables communication, relationship building, and operational coordination between platform participants.
+
+================================================================================
+WHAT THIS DOMAIN OWNS
+================================================================================
+
+1. Conversations
+   - Conversation records between collectors and makers
+   - Conversation metadata (last_message, unread counts)
+   - One conversation per collector-maker pair
+
+2. Messages
+   - Individual messages within conversations
+   - Message content (text)
+   - Message timestamps
+   - Read receipts (read_at)
+
+3. Message Attachments
+   - Attachment metadata
+   - Attachment URLs (stored in S3)
+   - Attachment types and sizes
+
+4. Conversation State
+   - Unread message counts
+   - Last message preview
+   - Conversation timestamps
+
+================================================================================
+WHAT THIS DOMAIN IS RESPONSIBLE FOR
+================================================================================
+
+1. Conversation Management
+   - Creating conversations (on first message)
+   - Maintaining one conversation per collector-maker pair
+   - Tracking conversation metadata
+   - Managing conversation state
+
+2. Message Delivery
+   - Sending messages
+   - Storing messages permanently
+   - Delivering messages in real-time
+   - Managing message delivery status
+
+3. Read Receipts
+   - Tracking message read status
+   - Updating read_at timestamps
+   - Calculating unread counts
+   - Maintaining read receipt accuracy
+
+4. Attachment Management
+   - Uploading attachments to S3
+   - Validating attachment types and sizes
+   - Generating signed URLs for attachments
+   - Managing attachment metadata
+
+5. Message Moderation
+   - Scanning messages for inappropriate content
+   - Detecting spam
+   - Handling abuse reports
+   - Blocking abusive users
+
+6. Event Publishing
+   - Publishing ConversationCreated events
+   - Publishing MessageSent events
+   - Publishing MessageRead events
+   - Publishing ConversationUpdated events
+
+================================================================================
+WHAT THIS DOMAIN DOES NOT OWN
+================================================================================
+
+1. User Profiles
+   - Collector profiles (Collector Domain)
+   - Maker profiles (Maker Domain)
+   - User identity (Identity Domain)
+
+2. Products
+   - Product data (Shelf Domain)
+   - Product details (Shelf Domain)
+
+3. Orders
+   - Order data (Order Domain)
+   - Order status (Order Domain)
+
+4. Notifications
+   - Notification delivery (Notification Domain)
+   - Notification preferences (Notification Domain)
+
+5. User Authentication
+   - Authentication tokens (Auth Essentials Domain)
+   - User accounts (Auth Essentials Domain)
+
+================================================================================
+DOMAIN BOUNDARIES
+================================================================================
+
+1. Input Boundaries
+   - Receives message sending requests
+   - Receives conversation retrieval requests
+   - Receives read receipt updates
+   - Receives attachment uploads
+   - Receives UserRegistered events (to validate users)
+   - Receives ProductPublished events (to enable conversation from product)
+   - Receives OrderCreated events (to enable conversation from order)
+   - Does NOT receive product or order data directly
+
+2. Output Boundaries
+   - Provides conversation data
+   - Provides message data
+   - Provides attachment URLs
+   - Publishes messaging events
+   - Does NOT provide user profile data
+   - Does NOT provide product or order details
+
+3. Data Boundaries
+   - Owns:
+      - `conversations` table
+      - `messages` table
+      - S3 bucket for message attachments
+   - Does NOT own:
+      - User profile data (Collector/Maker domains)
+      - Product or order data (Product/Order domains)
+   - Integration Notes:
+      - Consumes `UserRegistered`, `ProductPublished`, and `OrderCreated` events for context.
+      - Publishes messaging events for `Notification` domain; do not write to other domains' databases.
+
+4. Integration Boundaries
+   - Consumes `UserRegistered`, `ProductPublished`, and `OrderCreated` events to enable messaging workflows
+   - Publishes messaging events for Notification Domain
+   - Consumes ProductPublished events for context
+   - Consumes OrderCreated events for context
+   - Publishes events for Notification Domain
+   - Does NOT directly access other domain databases
+
+================================================================================
+KEY RESPONSIBILITIES
+================================================================================
+
+1. Enable Communication
+   - Facilitate collector-maker communication
+   - Support real-time messaging
+   - Enable attachment sharing
+   - Maintain conversation history
+
+2. Ensure Message Delivery
+   - Deliver messages reliably
+   - Track delivery status
+   - Handle delivery failures
+   - Support multiple delivery channels (WebSocket, polling)
+
+3. Maintain Data Integrity
+   - Ensure one conversation per collector-maker pair
+   - Maintain message order
+   - Track read receipts accurately
+   - Validate message participants
+
+4. Moderate Content
+   - Scan for inappropriate content
+   - Detect spam
+   - Handle abuse reports
+   - Block abusive users
+
+================================================================================
+CROSS-DOMAIN DEPENDENCIES
+================================================================================
+
+This Domain Provides To:
+- Notification Domain: ConversationCreated, MessageSent, MessageRead events
+
+This Domain Consumes From:
+- Identity Domain / Auth Essentials: UserRegistered events (to validate users)
+- Product Domain: ProductPublished events (to enable conversation from product)
+- Order Domain: OrderCreated events (to enable conversation from order)
+
+================================================================================
+TECHNICAL SCOPE
+================================================================================
+
+Technologies:
+- DynamoDB (conversations, messages)
+- S3 (message attachments)
+- AppSync GraphQL API
+- Lambda functions for business logic
+- WebSocket (for real-time delivery, if implemented)
+
+Data Storage:
+- conversations table
+- messages table
+- S3 bucket for attachments
+
+API Type:
+- GraphQL API (AppSync)
+
+Event Communication:
+- EventBridge for publishing and consuming events
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

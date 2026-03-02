@@ -1,0 +1,337 @@
+================================================================================
+COMMUNICATION DOMAIN - INPUT VALIDATION RULES
+================================================================================
+
+This document defines all input validation rules for the Communication Domain GraphQL API.
+All mutations and queries must validate inputs according to these rules.
+
+================================================================================
+MUTATION: sendMessage
+================================================================================
+
+Input: SendMessageInput!
+- conversationId: ID! (required)
+- senderId: ID! (required)
+- content: String! (required)
+- attachments: [MessageAttachmentInput!] (optional)
+
+Validation Rules:
+1. conversationId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing conversation
+   - User must be a participant in the conversation (collector or maker)
+
+2. senderId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must match authenticated user's ID
+   - Must be a participant in the conversation
+
+3. content:
+   - Minimum length: 1 character (after trimming)
+   - Maximum length: 5000 characters
+   - Cannot be all whitespace
+   - Trim leading/trailing whitespace
+   - Must contain at least one non-whitespace character
+   - Reject null bytes and control characters (except newlines, tabs)
+
+4. attachments (if provided):
+   - Maximum 10 attachments per message
+   - Each attachment must have:
+     * type: String! (required)
+       - Must be one of: "image", "video", "document", "audio"
+       - Case-sensitive
+     * url: String! (required)
+       - Must be a valid HTTPS URL
+       - Must be from allowed domains (S3, CDN)
+       - Maximum length: 500 characters
+     * filename: String! (required)
+       - Minimum length: 1 character
+       - Maximum length: 255 characters
+       - Must contain only alphanumeric, spaces, hyphens, underscores, dots
+       - Cannot contain path separators or special characters
+     * size: Int (optional)
+       - Must be positive integer if provided
+       - Maximum: 50MB (52428800 bytes) per attachment
+       - Total size of all attachments: 50MB maximum
+
+Business Rules:
+- Conversation must exist
+- User must be a participant (collectorUserId or makerUserId)
+- Cannot send message if conversation is blocked (if blocking feature exists)
+- Message rate limit: 30 messages per minute per user
+- Update conversation lastMessageAt timestamp
+- Increment unread count for recipient
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Not a participant in conversation or conversation blocked
+- 404 Not Found: Conversation not found
+- 422 Unprocessable Entity: Validation failed (detailed field errors)
+- 429 Too Many Requests: Rate limit exceeded
+
+================================================================================
+MUTATION: markMessageRead
+================================================================================
+
+Input:
+- messageId: ID! (required)
+
+Validation Rules:
+1. messageId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing message
+
+Business Rules:
+- Message must exist
+- User must be the recipient of the message (not the sender)
+- If message is already read, operation is idempotent
+- Decrement unread count for conversation
+- Set readAt timestamp
+
+Error Responses:
+- 400 Bad Request: Invalid messageId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot mark message as read (not recipient)
+- 404 Not Found: Message not found
+
+================================================================================
+MUTATION: markConversationRead
+================================================================================
+
+Input:
+- conversationId: ID! (required)
+
+Validation Rules:
+1. conversationId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing conversation
+
+Business Rules:
+- Conversation must exist
+- User must be a participant in the conversation
+- Mark all unread messages in conversation as read
+- Reset unread count for user (collector or maker)
+- Operation is idempotent
+
+Error Responses:
+- 400 Bad Request: Invalid conversationId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Not a participant in conversation
+- 404 Not Found: Conversation not found
+
+================================================================================
+QUERY: getConversation
+================================================================================
+
+Input:
+- conversationId: ID! (required)
+
+Validation Rules:
+1. conversationId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+
+Business Rules:
+- Conversation must exist
+- User must be a participant (collectorUserId or makerUserId) or admin
+
+Error Responses:
+- 400 Bad Request: Invalid conversationId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot access conversation
+- 404 Not Found: Conversation not found
+
+================================================================================
+QUERY: listConversations
+================================================================================
+
+Input:
+- userId: ID! (required)
+- limit: Int (optional, default: 20, max: 100)
+- nextToken: String (optional)
+
+Validation Rules:
+1. userId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must match authenticated user's ID (or user must have admin permissions)
+
+2. limit:
+   - Must be between 1 and 100
+   - Default: 20 if not provided
+   - Must be a positive integer
+
+3. nextToken:
+   - Must be a valid pagination token if provided
+   - Cannot be empty string
+
+Business Rules:
+- User can only list their own conversations (unless admin)
+- Results sorted by lastMessageAt descending (most recent first)
+- Return conversations where user is collector or maker
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot access other user's conversations
+
+================================================================================
+QUERY: getMessages
+================================================================================
+
+Input:
+- conversationId: ID! (required)
+- limit: Int (optional, default: 50, max: 100)
+- nextToken: String (optional)
+
+Validation Rules:
+1. conversationId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must reference an existing conversation
+
+2. limit:
+   - Must be between 1 and 100
+   - Default: 50 if not provided
+   - Must be a positive integer
+
+3. nextToken:
+   - Must be a valid pagination token if provided
+   - Cannot be empty string
+
+Business Rules:
+- Conversation must exist
+- User must be a participant (collectorUserId or makerUserId) or admin
+- Results sorted by createdAt ascending (oldest first) for pagination
+- Return messages in chronological order
+
+Error Responses:
+- 400 Bad Request: Invalid input format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot access conversation messages
+- 404 Not Found: Conversation not found
+
+================================================================================
+QUERY: getUnreadCount
+================================================================================
+
+Input:
+- userId: ID! (required)
+
+Validation Rules:
+1. userId:
+   - Must be a valid UUID or ID format
+   - Cannot be null or empty
+   - Must match authenticated user's ID (or user must have admin permissions)
+
+Business Rules:
+- Return total unread message count for user across all conversations
+- Count includes messages where user is recipient and readAt is null
+
+Error Responses:
+- 400 Bad Request: Invalid userId format
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Cannot access other user's unread count
+
+================================================================================
+COMMON VALIDATION PATTERNS
+================================================================================
+
+1. ID Validation:
+   - All ID fields must be valid UUID v4 format or domain-specific ID format
+   - Cannot be null, empty, or whitespace-only
+
+2. Content Validation:
+   - Sanitize HTML/script tags if allowing rich text (optional)
+   - Validate UTF-8 encoding
+   - Reject malicious content patterns
+   - Enforce length limits to prevent DoS
+
+3. URL Validation:
+   - Must be HTTPS (except for local development)
+   - Must be from allowed domains (S3 buckets, CDN)
+   - Validate URL format and accessibility
+   - Reject malicious URLs
+
+4. File Validation:
+   - Validate file types against allowed list
+   - Check file size limits
+   - Scan for malware (if service available)
+   - Validate file extensions match content type
+
+5. Authentication & Authorization:
+   - All mutations require valid authentication token
+   - Users can only access conversations they participate in
+   - Admins can access all conversations
+
+6. Rate Limiting:
+   - Send message: 30 per minute per user
+   - List conversations: 100 per hour per user
+   - Get messages: 200 per hour per user
+
+================================================================================
+SECURITY CONSIDERATIONS
+================================================================================
+
+1. Content Moderation:
+   - Scan messages for spam patterns
+   - Filter profanity (optional, configurable)
+   - Detect and block malicious links
+   - Rate limit to prevent abuse
+
+2. Privacy:
+   - Users can only see messages in conversations they participate in
+   - Do not expose conversation participants to non-participants
+   - Encrypt sensitive message content (optional)
+
+3. Attachment Security:
+   - Validate file types strictly
+   - Scan attachments for malware
+   - Limit attachment size and count
+   - Store attachments in secure, private S3 buckets
+
+4. Rate Limiting:
+   - Prevent message spam
+   - Limit attachment uploads
+   - Throttle API requests per user
+
+================================================================================
+CROSS-DOMAIN VALIDATION
+================================================================================
+
+1. User Validation:
+   - Validate senderId and conversation participants exist
+   - Verify users are active accounts
+   - Check if users are blocked (if blocking feature exists)
+
+2. Product Validation:
+   - If conversation has productId, validate product exists
+   - Verify product is accessible to conversation participants
+
+================================================================================
+ERROR RESPONSE FORMAT
+================================================================================
+
+All validation errors should return structured error responses:
+
+{
+  "errors": [
+    {
+      "message": "Validation failed",
+      "extensions": {
+        "code": "VALIDATION_ERROR",
+        "field": "content",
+        "reason": "Message content must be between 1 and 5000 characters"
+      }
+    }
+  ]
+}
+
+================================================================================
+END OF DOCUMENTATION
+================================================================================

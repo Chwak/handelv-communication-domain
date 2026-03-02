@@ -1,0 +1,74 @@
+# Communication Domain - Inter-Domain Data Requirements
+
+## Overview
+All events consumed and emitted for messaging.
+
+**Domain:** Communication Domain  
+**Last Updated:** 2026-01-31
+
+---
+
+## 1. EVENTS CONSUMED
+
+None - Communication is independent
+
+---
+
+## 2. EVENTS EMITTED
+
+### 2.1 `ConversationCreated`
+**Consumers**: Analytics
+
+```typescript
+{
+  event: "ConversationCreated",
+  conversationId: string,
+  collectorUserId: string,
+  makerUserId: string,
+  productId?: string,
+  createdAt: string,
+}
+```
+
+### 2.2 `MessageSent`
+**Consumers**: Notification, Maker
+
+```typescript
+{
+  event: "MessageSent",
+  conversationId: string,
+  messageId: string,
+  senderUserId: string,
+  recipientUserId: string,
+  createdAt: string,
+}
+```
+
+### 2.3 `MessageRead`
+**Consumers**: Analytics
+
+```typescript
+{
+  event: "MessageRead",
+  messageId: string,
+  readBy: string,
+  readAt: string,
+}
+```
+
+---
+
+## DEPENDENCY MAP
+
+```
+Communication Domain:
+├── Consumes From: NONE
+└── Provides To:
+    ├── Notification Domain
+    │   └── MessageSent
+    ├── Maker Domain
+    │   └── MessageSent (for response metrics)
+    └── Analytics Domain
+        ├── ConversationCreated
+        └── MessageRead
+```
