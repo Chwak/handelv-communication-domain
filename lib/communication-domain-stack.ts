@@ -34,7 +34,7 @@ export class CommunicationDomainStack extends cdk.Stack {
 
     const schemaRegistryName = ssm.StringParameter.valueForStringParameter(
       this,
-      `/${props.environment}/shared-infra/glue/schema-registry-name`,
+      `/hand-made/${props.environment}/shared-infra/schema-registry-name`,
     );
 
     // Create S3 bucket for message attachments

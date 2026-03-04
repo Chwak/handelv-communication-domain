@@ -59,7 +59,7 @@ export class OrderCreatedConsumerLambdaConstruct extends Construct {
         OUTBOX_TABLE_NAME: outboxTable.tableName,
         EVENT_BUS_NAME: eventBus.eventBusName,
       },
-      reservedConcurrentExecutions: 100,
+      reservedConcurrentExecutions: 1,
       bundling: {
         externalModules: ["@aws-sdk/*"],
         minify: false,
