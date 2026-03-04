@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaNodeJs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
@@ -17,7 +18,7 @@ interface OrderCreatedConsumerLambdaConstructProps {
 }
 
 export class OrderCreatedConsumerLambdaConstruct extends Construct {
-  public function: lambda.Function;
+  public function: lambda.IFunction;
 
   constructor(scope: Construct, id: string, props: OrderCreatedConsumerLambdaConstructProps) {
     super(scope, id);
@@ -45,24 +46,11 @@ export class OrderCreatedConsumerLambdaConstruct extends Construct {
     });
 
     // Create Lambda function
-    this.function = new lambda.Function(this, "OrderCreatedConsumerFunction", {
+    this.function = new lambdaNodeJs.NodejsFunction(this, "OrderCreatedConsumerFunction", {
       functionName: `${environment}-${regionCode}-communication-order-created-consumer`,
+      entry: `${__dirname}/../../../functions/lambda/event-consumer/order-created-consumer-lambda.ts`,
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "index.handler",
-      code: lambda.Code.fromAsset("lib/functions/lambda/event-consumer", {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            "bash",
-            "-c",
-            [
-              "npm install",
-              "cp -r node_modules /asset-output/",
-              "cp *.ts /asset-output/",
-            ].join(" && "),
-          ],
-        },
-      }),
+      handler: "handler",
       timeout: cdk.Duration.seconds(60),
       memorySize: 512,
       environment: {
@@ -72,6 +60,11 @@ export class OrderCreatedConsumerLambdaConstruct extends Construct {
         EVENT_BUS_NAME: eventBus.eventBusName,
       },
       reservedConcurrentExecutions: 100,
+      bundling: {
+        externalModules: ["@aws-sdk/*"],
+        minify: false,
+        sourceMap: false,
+      },
     });
 
     // Create idempotency table
