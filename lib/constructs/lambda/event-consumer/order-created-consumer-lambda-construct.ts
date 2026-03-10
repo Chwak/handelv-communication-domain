@@ -59,7 +59,6 @@ export class OrderCreatedConsumerLambdaConstruct extends Construct {
         OUTBOX_TABLE_NAME: outboxTable.tableName,
         EVENT_BUS_NAME: eventBus.eventBusName,
       },
-      reservedConcurrentExecutions: 1,
       bundling: {
         externalModules: ["@aws-sdk/*"],
         minify: false,
@@ -81,6 +80,7 @@ export class OrderCreatedConsumerLambdaConstruct extends Construct {
     conversationsTable.grantWriteData(this.function);
     idempotencyTable.grantReadWriteData(this.function);
     outboxTable.grantReadWriteData(this.function);
+    queue.grantConsumeMessages(this.function);
 
     // Create EventBridge rule to route order.created.v1 events to SQS
     const rule = new events.Rule(this, "OrderCreatedRule", {
